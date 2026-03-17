@@ -1,52 +1,54 @@
 import os
 import sys
-import google.generativeai as genai
+import requests
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
 
 def run_bot():
     # 1. 獲取環境變數
-    gemini_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     line_token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
     line_user_id = os.environ.get("LINE_USER_ID")
 
-    if not gemini_key or not line_token or not line_user_id:
+    if not api_key or not line_token or not line_user_id:
         print("❌ 錯誤：GitHub Secrets 設定不完整")
         return
 
-    # 2. 設定 API
+    # 2. 直接使用 HTTP 請求調用 Gemini V1 正式版接口
+    # 這樣可以完全繞過 v1beta 的 404 錯誤
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{
+            "parts": [{"text": "請幫我總結今日的全球重要科技新聞，並以繁體中文條列式呈現。"}]
+        }]
+    }
+
     try:
-        # 【核心修正】配置 API 並強制使用 v1 接口，徹底避開 v1beta 404 錯誤
-        genai.configure(api_key=gemini_key)
-        
-        # 使用最新穩定版模型
-        model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash'
-        )
+        response = requests.post(url, headers=headers, json=payload)
+        response_data = response.json()
 
-        # 3. 產生內容 (加入安全性設定以防回傳為空)
-        prompt = "請幫我總結今日的全球重要科技新聞，並以繁體中文條列式呈現。"
-        response = model.generate_content(prompt)
-        
-        if response and response.text:
-            result_text = response.text
-        else:
-            result_text = "AI 回傳內容為空，可能觸發安全過濾。"
+        # 檢查是否報錯
+        if response.status_code != 200:
+            error_msg = response_data.get('error', {}).get('message', '未知錯誤')
+            raise Exception(f"Google API 報錯: {error_msg}")
 
-        # 4. 推送至 LINE
+        # 提取文字內容
+        result_text = response_data['candidates'][0]['content']['parts'][0]['text']
+
+        # 3. 推送至 LINE
         line_bot_api = LineBotApi(line_token)
         line_bot_api.push_message(line_user_id, TextSendMessage(text=result_text))
-        print("✅ 任務成功！")
+        print("✅ 任務成功！終於繞過 404 了！")
 
     except Exception as e:
         error_str = str(e)
         print(f"❌ 執行失敗：{error_str}")
-        
-        # 發送詳細錯誤到 LINE 進行最後驗收
+        # 報錯傳給 LINE
         try:
             line_bot_api = LineBotApi(line_token)
-            # 如果還是 404，這裡會顯示是哪個路徑找不到
-            line_bot_api.push_message(line_user_id, TextSendMessage(text=f"【最終調試報錯】：\n{error_str}"))
+            line_bot_api.push_message(line_user_id, TextSendMessage(text=f"【HTTP 直連報錯】：\n{error_str}"))
         except:
             pass
         sys.exit(1)
