@@ -2,24 +2,24 @@ name: Daily Intelligence Bot
 on:
   schedule:
     # 設定為 UTC 23:55，這對應台灣時間隔天早上 07:55
-    # 提前 5 分鐘設定通常可以避開整點的系統忙碌，讓 8 點前準時發送機率更高
     - cron: '55 23 * * *'
   workflow_dispatch: # 保留手動觸發按鈕
   push:
-    branches: [ main ] # 每次你改完存檔也會自動跑一次測試
+    branches: [ main ] # 每次改完存檔也會自動跑一次測試
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4 # 升級至穩定版
-      - uses: actions/setup-python@v5 # 升級至穩定版
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       - run: pip install -r requirements.txt
       - name: Run script
-               env:
+        env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: python main.py
