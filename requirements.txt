@@ -1,2 +1,4 @@
 google-generativeai
-line-bot-sdk==1.18.0
+line-bot-sdk
+requests
+beautifulsoup4
