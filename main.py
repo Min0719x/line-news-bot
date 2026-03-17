@@ -5,50 +5,51 @@ from linebot import LineBotApi
 from linebot.models import TextSendMessage
 
 def run_bot():
-    # 1. 獲取你剛剛設定好的金鑰
-    api_key = os.environ.get("GEMINI_API_KEY")
+    # 1. 獲取環境變數
+    groq_key = os.environ.get("GROQ_API_KEY")
     line_token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
     line_user_id = os.environ.get("LINE_USER_ID")
 
-    if not api_key or not line_token or not line_user_id:
-        print("❌ 錯誤：GitHub Secrets 設定不完整")
+    if not groq_key or not line_token or not line_user_id:
+        print("❌ 錯誤：GitHub Secrets 設定不完整 (請檢查 GROQ_API_KEY)")
         return
 
-    # 2. 強制使用 v1beta 接口，這是目前最穩定的路徑
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    
-    headers = {'Content-Type': 'application/json'}
+    # 2. 調用 Groq API (使用 Llama 3 模型)
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {groq_key}",
+        "Content-Type": "application/json"
+    }
     payload = {
-        "contents": [{
-            "parts": [{"text": "請幫我總結今日的全球重要科技新聞，並以繁體中文條列式呈現。"}]
-        }]
+        "model": "llama3-8b-8192",
+        "messages": [
+            {
+                "role": "system", 
+                "content": "你是一個專業的新聞摘要助手，請用繁體中文回答。"
+            },
+            {
+                "role": "user", 
+                "content": "請幫我總結今日全球最重要的科技新聞，以繁體中文條列式呈現。"
+            }
+        ]
     }
 
     try:
-        # 直接發送請求給 Google
         response = requests.post(url, headers=headers, json=payload)
-        response_data = response.json()
+        response.raise_for_status()
+        result_text = response.json()['choices'][0]['message']['content']
 
-        # 檢查 Google 是否有噴錯誤
-        if response.status_code != 200:
-            error_msg = response_data.get('error', {}).get('message', '未知錯誤')
-            raise Exception(f"Google 伺服器報錯: {error_msg}")
-
-        # 成功拿回文字
-        result_text = response_data['candidates'][0]['content']['parts'][0]['text']
-
-        # 3. 傳送到 LINE
+        # 3. 推送至 LINE
         line_bot_api = LineBotApi(line_token)
         line_bot_api.push_message(line_user_id, TextSendMessage(text=result_text))
-        print("✅ 任務成功！")
+        print("✅ 任務成功：Groq 訊息已發送")
 
     except Exception as e:
-        error_str = str(e)
-        print(f"❌ 執行失敗：{error_str}")
-        # 如果失敗，也把原因傳到 LINE 讓你知道
+        error_str = f"❌ Groq 執行失敗：{str(e)}"
+        print(error_str)
         try:
             line_bot_api = LineBotApi(line_token)
-            line_bot_api.push_message(line_user_id, TextSendMessage(text=f"【系統最終修正報錯】：\n{error_str}"))
+            line_bot_api.push_message(line_user_id, TextSendMessage(text=error_str))
         except:
             pass
         sys.exit(1)
